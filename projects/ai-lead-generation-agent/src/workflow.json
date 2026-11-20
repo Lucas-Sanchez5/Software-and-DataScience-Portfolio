@@ -1,0 +1,511 @@
+{
+  "name": "AI-lead-generation-agent",
+  "nodes": [
+    {
+      "parameters": {
+        "compare": "selectedFields",
+        "fieldsToCompare": "=placeId",
+        "options": {}
+      },
+      "id": "2d5b5158-acdf-4d6c-aa1c-f1ae104426b4",
+      "name": "Remove Duplicates",
+      "type": "n8n-nodes-base.removeDuplicates",
+      "position": [
+        1936,
+        144
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "438b7541-6f5f-40b9-9feb-ad449eeb9e25",
+      "name": "Loop Over Items",
+      "type": "n8n-nodes-base.splitInBatches",
+      "position": [
+        2208,
+        144
+      ],
+      "typeVersion": 3
+    },
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "ef274f8a-052a-476e-b22b-14f049e30f63",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "position": [
+        1024,
+        144
+      ],
+      "webhookId": "YOUR_TELEGRAM_WEBHOOK_ID",
+      "typeVersion": 1.2,
+      "credentials": {
+        "telegramApi": {
+          "id": "YOUR_TELEGRAM_CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Simulamos el texto que enviaríamos por Telegram\nconst text = \"clinicas dentales; 2; Rosario, Argentina\";\n\ntry {\n  const [rubro, cantidad, ciudad] = text.split(';').map(s => s.trim());\n\n  if (!rubro || !cantidad || !ciudad) {\n    throw new Error(\"Formato incorrecto. Usa: rubro; cantidad; ciudad\");\n  }\n\n  const query = encodeURIComponent(`${rubro} en ${ciudad}`);\n  const mapsUrl = `https://www.google.com/maps/search/${query}`;\n\n  return {\n    rubro,\n    limite: parseInt(cantidad, 10),\n    ciudad,\n    mapsUrl\n  };\n} catch (error) {\n  return { error: error.message };\n}"
+      },
+      "id": "90e9216e-b133-4aa5-97cd-f6e0db2e85d3",
+      "name": "Extract Input Data",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        1232,
+        144
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').first().json.message.chat.id }}",
+        "text": "=✅ ¡Nuevo Lead B2B!\n🏢 Empresa: {{ $json.Nombre }}\n📞 Teléfono: {{ $json[\"Teléfono \"] }}\n🌐 Web: {{ $json[\" Web\"] }}\n⭐ Puntuación: {{ $json.Puntaje }} ({{ $json[\"Reseñas\"] }} reseñas)\n",
+        "additionalFields": {}
+      },
+      "id": "e7973ffb-cc2d-4af4-ac0a-609501f80ba4",
+      "name": "Notification message",
+      "type": "n8n-nodes-base.telegram",
+      "position": [
+        2352,
+        -96
+      ],
+      "webhookId": "YOUR_NOTIFICATION_WEBHOOK_ID",
+      "typeVersion": 1.2,
+      "credentials": {
+        "telegramApi": {
+          "id": "YOUR_TELEGRAM_CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/drobnikj~crawler-google-places/run-sync-get-dataset-items?token=YOUR_APIFY_API_TOKEN",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"searchStringsArray\": [\n    \"{{ $('Telegram Trigger').item.json.message.text.split(';')[0].trim() }} en {{ $('Telegram Trigger').item.json.message.text.split(';')[2].trim() }}\"\n  ],\n  \"maxCrawledPlacesPerSearch\": {{ parseInt($('Telegram Trigger').item.json.message.text.split(';')[1].trim()) || 5 }},\n  \"language\": \"en\",\n  \"extractEmailsAndContacts\": true\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1456,
+        144
+      ],
+      "id": "cbd2e52b-0706-4a05-a04b-461ba5842ecd",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "url",
+          "value": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?gid=0#gid=0",
+          "__regex": "https:\\/\\/(?:drive|docs)\\.google\\.com(?:\\/.*|)\\/d\\/([0-9a-zA-Z\\-_]+)(?:\\/.*|)"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "clientes1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Nombre": "={{ $('Loop Over Items').item.json.title }}",
+            "Teléfono ": "={{ $('Loop Over Items').item.json.phone || 'No tiene' }}",
+            " Web": "={{ $('Loop Over Items').item.json.website || 'No tiene' }}",
+            "Puntaje": "={{ $('Loop Over Items').item.json.totalScore || 'N/A' }}",
+            "Reseñas": "={{ $('Loop Over Items').item.json.reviewsCount || 0 }}",
+            "Nicho": "={{ $json.output.categoria_nicho }}",
+            "Diagnóstico": "={{ $json.output.diagnostico_rapido }}",
+            "RompeHielos": "={{ $json.output.apertura_estrategica }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Nombre",
+              "displayName": "Nombre",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Teléfono ",
+              "displayName": "Teléfono ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": " Web",
+              "displayName": " Web",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Puntaje",
+              "displayName": "Puntaje",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Reseñas",
+              "displayName": "Reseñas",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Nicho",
+              "displayName": "Nicho",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Diagnóstico",
+              "displayName": "Diagnóstico",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "RompeHielos",
+              "displayName": "RompeHielos",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "cellFormat": "RAW"
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2944,
+        160
+      ],
+      "id": "34d41c15-5789-4f03-9dbb-9ec858b48ca6",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleApi": {
+          "id": "YOUR_GOOGLE_SERVICE_ACCOUNT_ID",
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 25
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2416,
+        160
+      ],
+      "id": "ac28ee48-1bd0-40aa-baf8-8bbd9043495a",
+      "name": "Wait",
+      "webhookId": "YOUR_WAIT_WEBHOOK_ID"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Analiza este lodge y redacta el inicio de un correo:\nNombre: {{ $json.title }}\nUbicación: {{ $json.address }}\nReseñas: {{ $json.reviewsCount }} (Puntuación: {{ $json.totalScore }})\nCategorías Google: {{ $json.categories.join(', ') }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "Eres un consultor B2B especializado en marketing para lodges y ranchos familiares en EE.UU. Tu objetivo es clasificar el prospecto y redactar un rompehielos estratégico de ventas en INGLÉS para que el consultor lo envíe por correo. Debes devolver la información estrictamente en el formato JSON estructurado que se te solicita.",
+          "maxIterations": 3,
+          "enableStreaming": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        2640,
+        160
+      ],
+      "id": "fb5c9785-6620-4642-88d2-68c04b4bde7d",
+      "name": "AI Agent",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.5-flash-lite",
+        "options": {
+          "maxOutputTokens": 500,
+          "temperature": 0.7,
+          "safetySettings": {
+            "values": [
+              {
+                "category": "HARM_CATEGORY_HARASSMENT",
+                "threshold": "BLOCK_NONE"
+              },
+              {
+                "category": "HARM_CATEGORY_HATE_SPEECH",
+                "threshold": "BLOCK_NONE"
+              },
+              {
+                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                "threshold": "BLOCK_NONE"
+              },
+              {
+                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                "threshold": "BLOCK_NONE"
+              }
+            ]
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        2640,
+        384
+      ],
+      "id": "b2bfbe38-1856-482c-b3c0-50d329b9761a",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "YOUR_GEMINI_API_CREDENTIAL_ID",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"nombre_empresa\": {\n      \"type\": \"string\"\n    },\n    \"categoria_nicho\": {\n      \"type\": \"string\",\n      \"description\": \"Categoriza el negocio en: Caza, Pesca, Rancho Familiar, Golf/Eventos u Otro.\"\n    },\n    \"diagnostico_rapido\": {\n      \"type\": \"string\",\n      \"description\": \"Un apunte comercial punzante de 1 línea en ESPAÑOL sobre su vulnerabilidad digital. REGLA: Varía tu redacción. ESTÁ PROHIBIDO empezar la frase con 'Con X reseñas' o 'A pesar de tener'. Usa enfoques distintos: el riesgo de depender del boca a boca generacional, la invisibilidad frente a competidores ruidosos, o el contraste entre su producto premium y su nula huella digital.\"\n    },\n    \"apertura_estrategica\": {\n      \"type\": \"string\",\n      \"description\": \"Un rompehielos de 2 líneas en INGLÉS para iniciar el correo. Elige UNO de estos 3 ángulos: 1) Merecen la visibilidad de los competidores con hype. 2) Ahorrar comisiones de OTAs. 3) Llenar semanas vacías de temporada media. REGLA: Escribe de forma humana, natural y varía la estructura, el saludo y el vocabulario en cada empresa.\"\n    }\n  },\n  \"required\": [\n    \"nombre_empresa\",\n    \"categoria_nicho\",\n    \"diagnostico_rapido\",\n    \"apertura_estrategica\"\n  ]\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        2784,
+        400
+      ],
+      "id": "90ee0c14-3748-4a31-a73a-973e411dfe30",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "a2bf6401-4d3e-4df8-a67e-3b6672e319bd",
+              "leftValue": "={{ $json.reviewsCount }}",
+              "rightValue": 30,
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        1680,
+        144
+      ],
+      "id": "5303e86f-793e-4641-b86f-282e6c636893",
+      "name": "Filter"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "Notification message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Input Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remove Duplicates": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Input Data": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append row in sheet": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "Remove Duplicates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "c9c68a9a-87c0-458c-a223-ea803918cd22",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "nodeGroups": [],
+  "tags": []
+}
