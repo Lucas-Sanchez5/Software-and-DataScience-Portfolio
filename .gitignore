@@ -14,14 +14,13 @@ dist/
 
 # Datos y Modelos
 *.csv
+!sample_dataset.csv
 *.xlsx
 *.parquet
 *.pkl
 *.joblib
 *.h5
 *.model
-data/raw/*
-data/processed/*
 
 # Configuración 
 .env
